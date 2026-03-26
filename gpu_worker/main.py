@@ -46,11 +46,26 @@ def _job_detail(job: Job) -> JobDetail:
     )
 
 
+async def _get_public_ip() -> str:
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get("https://api.ipify.org")
+            return resp.text.strip()
+    except Exception:
+        return "unknown"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    public_ip = await _get_public_ip()
+    logger.info("Public IP: %s", public_ip)
+    logger.info("Worker URL: http://%s:%d", public_ip, settings.PORT)
+    logger.info("Health check: curl http://%s:%d/health", public_ip, settings.PORT)
+
     logger.info("Loading OCR model...")
     await asyncio.to_thread(get_ocr_engine)
-    logger.info("Model loaded")
+    logger.info("Model loaded — ready to accept jobs")
 
     manager = get_job_manager()
     runner_task = asyncio.create_task(manager.start_runner())
@@ -128,8 +143,11 @@ async def list_jobs(_: None = Depends(verify_secret)):
 @app.get("/health")
 async def health():
     import torch
+    public_ip = await _get_public_ip()
     return {
         "status": "ok",
+        "public_ip": public_ip,
+        "worker_url": f"http://{public_ip}:{settings.PORT}",
         "gpu_available": torch.cuda.is_available(),
         "gpu_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
         "model_loaded": is_engine_loaded(),
