@@ -64,7 +64,24 @@ class OCREngine:
         sources: list[str | Image.Image],
         task: str = "ocr",
     ) -> list[OCRResult]:
-        return [self.run(src, task=task) for src in sources]
+        self.load()
+
+        images = [load_image(src) for src in sources]
+
+        start = time.perf_counter()
+        texts = self._backend.run_batch(images, task)
+        elapsed = time.perf_counter() - start
+        per_image = round(elapsed / len(images), 3) if images else 0
+
+        return [
+            OCRResult(
+                text=text,
+                model=self._model_slug,
+                task=task,
+                elapsed_seconds=per_image,
+            )
+            for text in texts
+        ]
 
     def run_pdf(
         self,

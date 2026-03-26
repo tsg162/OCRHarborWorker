@@ -11,6 +11,8 @@ class WorkerSettings(BaseSettings):
     CALLBACK_SECRET: str = ""
     OCR_MODEL: str = "lightonai/LightOnOCR-2-1B"
     HF_HOME: str = "/workspace/.cache/huggingface"
+    BATCH_SIZE: int = 4
+    BATCH_WAIT_SECONDS: float = 0.5
     MAX_QUEUE_SIZE: int = 100
     JOB_TTL_SECONDS: int = 3600
     WEBHOOK_TIMEOUT: float = 10.0

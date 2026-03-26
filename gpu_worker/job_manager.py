@@ -96,40 +96,102 @@ class JobManager:
     def list_jobs(self) -> list[Job]:
         return list(self._jobs.values())
 
+    async def _drain_batch(self) -> list[Job]:
+        """Wait for the first job, then grab more if available within BATCH_WAIT_SECONDS."""
+        batch: list[Job] = []
+
+        # Block until at least one job arrives
+        try:
+            job_id = await asyncio.wait_for(self._queue.get(), timeout=1.0)
+        except asyncio.TimeoutError:
+            return batch
+
+        job = self._jobs.get(job_id)
+        if job is not None and job.status != "cancelled":
+            batch.append(job)
+
+        # Try to grab more jobs up to BATCH_SIZE, with a short wait
+        if settings.BATCH_SIZE > 1:
+            deadline = time.time() + settings.BATCH_WAIT_SECONDS
+            while len(batch) < settings.BATCH_SIZE:
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    break
+                try:
+                    job_id = await asyncio.wait_for(self._queue.get(), timeout=remaining)
+                except asyncio.TimeoutError:
+                    break
+                job = self._jobs.get(job_id)
+                if job is not None and job.status != "cancelled":
+                    batch.append(job)
+
+        return batch
+
     async def start_runner(self) -> None:
-        logger.info("Job runner started")
+        logger.info("Job runner started (batch_size=%d)", settings.BATCH_SIZE)
         while not self._shutdown.is_set():
-            try:
-                job_id = await asyncio.wait_for(self._queue.get(), timeout=1.0)
-            except asyncio.TimeoutError:
+            batch = await self._drain_batch()
+            if not batch:
                 continue
 
-            job = self._jobs.get(job_id)
-            if job is None or job.status == "cancelled":
-                continue
+            # Separate image jobs (batchable) from PDF jobs (run individually)
+            image_jobs = [j for j in batch if not _is_pdf(j.filename, j.content_type)]
+            pdf_jobs = [j for j in batch if _is_pdf(j.filename, j.content_type)]
 
-            job.status = "processing"
-            job.started_at = time.time()
-            logger.info("Processing job %s (%s)", job.id, job.filename)
+            now = time.time()
+            for job in batch:
+                job.status = "processing"
+                job.started_at = now
 
-            try:
-                result = await asyncio.to_thread(self._run_ocr, job)
-                job.status = "completed"
-                job.result_text = result.text
-                job.result_model = result.model
-                job.result_elapsed = result.elapsed_seconds
-                logger.info("Job %s completed in %.1fs", job.id, result.elapsed_seconds)
-            except Exception as exc:
-                job.status = "failed"
-                job.error = str(exc)
-                logger.error("Job %s failed: %s", job.id, exc)
-            finally:
-                job.completed_at = time.time()
-                job.image_data = None  # free memory
+            # Batch-process image jobs
+            if image_jobs:
+                logger.info("Processing batch of %d image jobs", len(image_jobs))
+                try:
+                    results = await asyncio.to_thread(self._run_ocr_batch, image_jobs)
+                    for job, result in zip(image_jobs, results):
+                        job.status = "completed"
+                        job.result_text = result.text
+                        job.result_model = result.model
+                        job.result_elapsed = result.elapsed_seconds
+                        job.completed_at = time.time()
+                        job.image_data = None
+                        logger.info("Job %s completed in %.1fs (batch)", job.id, result.elapsed_seconds)
+                except Exception as exc:
+                    for job in image_jobs:
+                        job.status = "failed"
+                        job.error = str(exc)
+                        job.completed_at = time.time()
+                        job.image_data = None
+                    logger.error("Batch failed: %s", exc)
 
-            await self._send_job_webhook(job)
+            # Process PDF jobs individually
+            for job in pdf_jobs:
+                logger.info("Processing PDF job %s (%s)", job.id, job.filename)
+                try:
+                    result = await asyncio.to_thread(self._run_ocr_single, job)
+                    job.status = "completed"
+                    job.result_text = result.text
+                    job.result_model = result.model
+                    job.result_elapsed = result.elapsed_seconds
+                    logger.info("Job %s completed in %.1fs", job.id, result.elapsed_seconds)
+                except Exception as exc:
+                    job.status = "failed"
+                    job.error = str(exc)
+                    logger.error("Job %s failed: %s", job.id, exc)
+                finally:
+                    job.completed_at = time.time()
+                    job.image_data = None
 
-    def _run_ocr(self, job: Job) -> object:
+            # Send webhooks for all jobs in the batch
+            for job in batch:
+                await self._send_job_webhook(job)
+
+    def _run_ocr_batch(self, jobs: list[Job]) -> list:
+        engine = get_ocr_engine()
+        images = [Image.open(BytesIO(j.image_data)).convert("RGB") for j in jobs]
+        return engine.run_batch(images, task=jobs[0].task)
+
+    def _run_ocr_single(self, job: Job) -> object:
         engine = get_ocr_engine()
         if _is_pdf(job.filename, job.content_type):
             with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:

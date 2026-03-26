@@ -16,6 +16,10 @@ class BaseBackend(ABC):
     def run(self, image: Image.Image, task: str) -> str:
         """Run inference on a single PIL Image. Return extracted text."""
 
+    def run_batch(self, images: list[Image.Image], task: str) -> list[str]:
+        """Run inference on multiple images. Default: sequential fallback."""
+        return [self.run(img, task) for img in images]
+
     @abstractmethod
     def model_id(self) -> str:
         """Return the HuggingFace model identifier this backend was loaded with."""
