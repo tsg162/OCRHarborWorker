@@ -1,0 +1,19 @@
+[project]
+name = "ocrdoctotext"
+version = "0.1.0"
+description = "Unified local OCR via HuggingFace vision-language models"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0",
+    "transformers>=4.50",
+    "pillow>=10.0",
+    "pypdfium2>=4.0",
+    "requests",
+]
+
+[project.optional-dependencies]
+flash-attn = ["flash-attn"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
