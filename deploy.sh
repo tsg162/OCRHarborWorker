@@ -80,21 +80,36 @@ mkdir -p "$HF_HOME" "$TRANSFORMERS_CACHE" "$PIP_CACHE_DIR"
 echo "  HF_HOME=$HF_HOME"
 echo "  PIP_CACHE_DIR=$PIP_CACHE_DIR"
 
-# --- 3. Install system deps if needed ---
-echo "[3/7] Checking system dependencies..."
-if ! command -v pip &>/dev/null; then
-    apt-get update && apt-get install -y python3-pip
+# --- 3. Detect pip and python from active venv ---
+echo "[3/7] Detecting Python environment..."
+PIP="pip"
+PYTHON="python3"
+
+# VAST.ai PyTorch template uses /venv/main/ — install there so FastAPI sees the packages
+if [ -x /venv/main/bin/pip ]; then
+    PIP="/venv/main/bin/pip"
+    PYTHON="/venv/main/bin/python"
+    echo "  Using VAST.ai venv: /venv/main/"
+elif [ -n "${VIRTUAL_ENV:-}" ] && [ -x "$VIRTUAL_ENV/bin/pip" ]; then
+    PIP="$VIRTUAL_ENV/bin/pip"
+    PYTHON="$VIRTUAL_ENV/bin/python"
+    echo "  Using active venv: $VIRTUAL_ENV"
+else
+    echo "  Using system Python"
+    if ! command -v pip &>/dev/null; then
+        apt-get update && apt-get install -y python3-pip
+    fi
 fi
 
 # --- 4. Install ocrdoctotext ---
 echo "[4/7] Installing ocrdoctotext..."
-if python3 -c "import ocrdoctotext" 2>/dev/null; then
+if $PYTHON -c "import ocrdoctotext" 2>/dev/null; then
     echo "  ocrdoctotext already installed"
 else
     if [ -d "$SCRIPT_DIR/ocrdoctotext_pkg" ]; then
-        pip install "$SCRIPT_DIR/ocrdoctotext_pkg/"
+        $PIP install "$SCRIPT_DIR/ocrdoctotext_pkg/"
     elif [ -d "/workspace/OCRDocToText" ]; then
-        pip install /workspace/OCRDocToText/
+        $PIP install /workspace/OCRDocToText/
     else
         echo "  ERROR: ocrdoctotext not found."
         echo "  Copy the OCRDocToText project to $SCRIPT_DIR/ocrdoctotext_pkg/ or /workspace/OCRDocToText/"
@@ -104,14 +119,14 @@ fi
 
 # --- 5. Install Python deps ---
 echo "[5/7] Installing Python dependencies..."
-pip install -r requirements.txt
+$PIP install -r requirements.txt
 
 # --- 6. Set up .env ---
 echo "[6/7] Configuring .env..."
 if [ ! -f .env ]; then
     cp .env.example .env
     # Auto-generate secret
-    secret=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+    secret=$($PYTHON -c "import secrets; print(secrets.token_urlsafe(32))")
     sed -i "s|^WORKER_SECRET=.*|WORKER_SECRET=$secret|" .env
     echo "  Generated WORKER_SECRET: $secret"
     echo "  (save this — you'll need it for WORKER_API_KEY on the control node)"
@@ -127,7 +142,7 @@ echo "  PORT=$WORKER_PORT"
 # --- 7. Pre-download model weights to /workspace ---
 echo "[7/7] Ensuring model weights are cached..."
 echo "  Downloading to $HF_HOME (this may take a few minutes on first run)..."
-python3 -c "
+$PYTHON -c "
 import os
 os.environ['HF_HOME'] = '$HF_HOME'
 os.environ['TRANSFORMERS_CACHE'] = '$TRANSFORMERS_CACHE'
