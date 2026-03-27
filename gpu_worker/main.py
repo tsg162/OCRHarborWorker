@@ -46,12 +46,19 @@ def _job_detail(job: Job) -> JobDetail:
     )
 
 
+_cached_public_ip: str = "unknown"
+
+
 async def _get_public_ip() -> str:
+    global _cached_public_ip
+    if _cached_public_ip != "unknown":
+        return _cached_public_ip
     try:
         import httpx
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get("https://api.ipify.org")
-            return resp.text.strip()
+            _cached_public_ip = resp.text.strip()
+            return _cached_public_ip
     except Exception:
         return "unknown"
 
@@ -91,7 +98,11 @@ async def submit_job(
 ) -> JobResponse:
     manager = get_job_manager()
     if manager.queue_depth() >= settings.MAX_QUEUE_SIZE:
-        raise HTTPException(429, "Queue full")
+        raise HTTPException(
+            429,
+            "Queue full",
+            headers={"Retry-After": "10"},
+        )
 
     raw = await file.read()
     if not raw:
@@ -143,7 +154,7 @@ async def list_jobs(_: None = Depends(verify_secret)):
 @app.get("/health")
 async def health():
     import torch
-    public_ip = await _get_public_ip()
+    public_ip = _cached_public_ip
     return {
         "status": "ok",
         "public_ip": public_ip,

@@ -6,9 +6,9 @@ Remote GPU OCR worker for the OCRServer system. Runs on a VAST.ai GPU instance, 
 
 ### 1. Create Instance
 
-- **Template: PyTorch (Vast)** (comes with port 8080 exposed by default)
+- **Template: PyTorch (Vast)** — CUDA + PyTorch pre-installed
 - GPU: 4+ GB VRAM (1B model in bfloat16 is ~2GB)
-- No extra port config needed — the deploy script auto-detects an available exposed port
+- No extra port config needed — the deploy script auto-detects an available exposed port (prefers 5000, since 8080 is often taken by Jupyter on VAST.ai)
 
 ### 2. Clone and Deploy
 

@@ -46,8 +46,8 @@ fi
 echo "[1/7] Detecting available port..."
 WORKER_PORT=""
 
-# Check which ports VAST.ai has exposed, prefer 8080 (default in most templates)
-for try_port in 8080 8000 6006 1111; do
+# Check which ports VAST.ai has exposed, prefer 5000 (8080 is often taken by Jupyter)
+for try_port in 5000 8080 8000 6006 1111; do
     var_name="VAST_TCP_PORT_${try_port}"
     ext_port="${!var_name:-}"
     if [ -n "$ext_port" ]; then
@@ -59,8 +59,8 @@ for try_port in 8080 8000 6006 1111; do
 done
 
 if [ -z "$WORKER_PORT" ]; then
-    echo "  No VAST.ai port mapping detected — defaulting to 8080"
-    WORKER_PORT="8080"
+    echo "  No VAST.ai port mapping detected — defaulting to 5000"
+    WORKER_PORT="5000"
     EXTERNAL_PORT="unknown"
 fi
 

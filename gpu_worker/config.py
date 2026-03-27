@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings
 
 class WorkerSettings(BaseSettings):
     HOST: str = "0.0.0.0"
-    PORT: int = 8000
+    PORT: int = 5000
     WORKER_SECRET: str = ""
     CALLBACK_URL: str = ""
     CALLBACK_SECRET: str = ""
@@ -13,7 +13,7 @@ class WorkerSettings(BaseSettings):
     HF_HOME: str = "/workspace/.cache/huggingface"
     BATCH_SIZE: int = 4
     BATCH_WAIT_SECONDS: float = 0.5
-    MAX_QUEUE_SIZE: int = 100
+    MAX_QUEUE_SIZE: int = 500
     JOB_TTL_SECONDS: int = 3600
     WEBHOOK_TIMEOUT: float = 10.0
     WEBHOOK_MAX_RETRIES: int = 3
