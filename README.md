@@ -14,8 +14,8 @@ Remote GPU OCR worker for the OCRServer system. Runs on a VAST.ai GPU instance, 
 ```bash
 ssh root@<vast-ip>
 cd /workspace
-git clone https://github.com/tsg162/OCRServer.git
-cd OCRServer/worker-remote
+git clone https://github.com/tsg162/OCRHarborWorker.git
+cd OCRHarborWorker
 bash install.sh                # default port 5001
 bash install.sh --port 8080    # or pick a port
 ```
