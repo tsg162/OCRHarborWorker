@@ -12,10 +12,10 @@ from io import BytesIO
 
 from PIL import Image
 
-from gpu_worker.config import settings
-from gpu_worker.models import OCRResultPayload, WebhookPayload
-from gpu_worker.ocr_bridge import get_ocr_engine
-from gpu_worker.webhook import send_webhook
+from ocrharbor_worker.config import settings
+from ocrharbor_worker.models import OCRResultPayload, WebhookPayload
+from ocrharbor_worker.ocr_bridge import get_ocr_engine
+from ocrharbor_worker.webhook import send_webhook
 
 logger = logging.getLogger(__name__)
 

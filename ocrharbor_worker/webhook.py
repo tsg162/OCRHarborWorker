@@ -5,8 +5,8 @@ import logging
 
 import httpx
 
-from gpu_worker.config import settings
-from gpu_worker.models import WebhookPayload
+from ocrharbor_worker.config import settings
+from ocrharbor_worker.models import WebhookPayload
 
 logger = logging.getLogger(__name__)
 

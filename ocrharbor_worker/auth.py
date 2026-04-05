@@ -3,7 +3,7 @@ import hmac
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from gpu_worker.config import settings
+from ocrharbor_worker.config import settings
 
 _bearer = HTTPBearer()
 

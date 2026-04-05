@@ -161,10 +161,10 @@ echo "Disk usage:"
 du -sh "$HF_HOME" 2>/dev/null | awk '{print "  Model cache: " $1}'
 echo ""
 echo "Start the worker:"
-echo "  cd $SCRIPT_DIR && python3 -m gpu_worker.main"
+echo "  cd $SCRIPT_DIR && python3 -m ocrharbor_worker.main"
 echo ""
 echo "Or in the background:"
-echo "  cd $SCRIPT_DIR && nohup python3 -m gpu_worker.main > worker.log 2>&1 &"
+echo "  cd $SCRIPT_DIR && nohup python3 -m ocrharbor_worker.main > worker.log 2>&1 &"
 echo ""
 if [ "$EXTERNAL_PORT" != "unknown" ]; then
     echo "Worker URL (for control node .env):"

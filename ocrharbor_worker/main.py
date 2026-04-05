@@ -8,11 +8,11 @@ from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 
-from gpu_worker.auth import verify_secret
-from gpu_worker.config import settings
-from gpu_worker.job_manager import Job, get_job_manager
-from gpu_worker.models import JobDetail, JobResponse, OCRResultPayload
-from gpu_worker.ocr_bridge import get_ocr_engine, is_engine_loaded
+from ocrharbor_worker.auth import verify_secret
+from ocrharbor_worker.config import settings
+from ocrharbor_worker.job_manager import Job, get_job_manager
+from ocrharbor_worker.models import JobDetail, JobResponse, OCRResultPayload
+from ocrharbor_worker.ocr_bridge import get_ocr_engine, is_engine_loaded
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -171,7 +171,7 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        "gpu_worker.main:app",
+        "ocrharbor_worker.main:app",
         host=settings.HOST,
         port=settings.PORT,
     )

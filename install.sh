@@ -26,6 +26,28 @@ done
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# --- Sanity check: warn if not under /workspace ---
+if [ -d /workspace ] && [[ "$SCRIPT_DIR" != /workspace/* ]]; then
+    echo "WARNING: You're installing from $SCRIPT_DIR"
+    echo "         but /workspace exists. On VAST.ai the worker should live"
+    echo "         under /workspace/ so it uses the large persistent volume"
+    echo "         (the root disk is usually small and will fill up)."
+    echo ""
+    echo "         Expected: /workspace/OCRServer/worker-remote/"
+    echo "         Got:      $SCRIPT_DIR"
+    echo ""
+    read -rp "Continue anyway? [y/N] " confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+        echo ""
+        echo "To fix this:"
+        echo "  cd /workspace"
+        echo "  git clone <repo> OCRServer"
+        echo "  cd OCRServer/worker-remote"
+        echo "  bash install.sh"
+        exit 1
+    fi
+fi
+
 echo "=== OCR GPU Worker Installation ==="
 echo "  Port: $PORT"
 echo ""
@@ -116,10 +138,17 @@ echo "  PORT:          $PORT"
 echo ""
 echo "Start the worker:"
 echo "  cd $SCRIPT_DIR"
-echo "  $PYTHON -m gpu_worker.main"
+echo "  $PYTHON -m ocrharbor_worker.main"
 echo ""
 echo "Or in background:"
-echo "  nohup $PYTHON -m gpu_worker.main > worker.log 2>&1 &"
+echo "  nohup $PYTHON -m ocrharbor_worker.main > worker.log 2>&1 &"
 echo ""
 echo "Then on your control node, add this worker:"
-echo "  ./worker-ctl add <name> <tunnel-url> --key $SECRET"
+echo "  ocrharbor workers add <name> <tunnel-url> --key $SECRET"
+echo ""
+echo "To stop the worker:"
+echo "  pkill -f 'ocrharbor_worker.main'"
+echo ""
+echo "To uninstall (remove everything):"
+echo "  rm -rf $SCRIPT_DIR .env worker.log"
+echo "  rm -rf $CACHE_DIR/huggingface  # model weights (~4GB)"

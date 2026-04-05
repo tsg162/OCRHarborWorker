@@ -1,6 +1,6 @@
 import threading
 
-from gpu_worker.config import settings
+from ocrharbor_worker.config import settings
 
 _engine = None
 _lock = threading.Lock()

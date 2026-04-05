@@ -9,4 +9,4 @@ fuser -k "$PORT/tcp" 2>/dev/null || true
 sleep 0.5
 
 echo "Starting worker on port $PORT..."
-python3 -m gpu_worker.main
+python3 -m ocrharbor_worker.main
