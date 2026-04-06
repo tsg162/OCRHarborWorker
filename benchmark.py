@@ -580,11 +580,29 @@ def print_comparison(report_files: list[str]):
 # Main
 # ---------------------------------------------------------------------------
 
+def _read_secret_from_dotenv() -> str:
+    """Read WORKER_SECRET from .env file (same source the worker uses)."""
+    env_path = Path(__file__).parent / ".env"
+    if not env_path.exists():
+        return ""
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        if key.strip() == "WORKER_SECRET":
+            # Strip optional quotes
+            value = value.strip().strip("'\"")
+            return value
+    return ""
+
+
 async def async_main(args):
     url = args.url.rstrip("/")
+    secret = args.secret or os.environ.get("WORKER_SECRET", "") or _read_secret_from_dotenv()
     headers = {}
-    if args.secret:
-        headers["Authorization"] = f"Bearer {args.secret}"
+    if secret:
+        headers["Authorization"] = f"Bearer {secret}"
 
     # Compare mode
     if args.compare:
@@ -703,8 +721,8 @@ Examples:
     )
     parser.add_argument("--url", default="http://localhost:5001",
                         help="Worker base URL")
-    parser.add_argument("--secret", default=os.environ.get("WORKER_SECRET", ""),
-                        help="Worker secret (or set WORKER_SECRET env var)")
+    parser.add_argument("--secret", default=None,
+                        help="Worker secret (auto-read from .env if omitted)")
     parser.add_argument("--gpu-name", default="",
                         help="GPU name for report (auto-detected from /health if omitted)")
     parser.add_argument("--gpu-cost", type=float, default=None,
