@@ -1,43 +1,61 @@
-# OCR GPU Worker
+# OCRHarbor Worker
 
-Remote GPU OCR worker for the OCRServer system. Runs on a VAST.ai GPU instance, accepts image jobs via API, runs LightOnOCR-2-1B inference, and reports results back to the control node via polling.
+GPU OCR worker that runs on remote instances (Vast.ai, Runpod, bare metal) to process images with LightOnOCR-2-1B. Part of the [OCRHarbor](https://github.com/tsg162/OCRHarbor) ecosystem.
 
-## Quick Start on VAST.ai
+## Quick Start
 
-### 1. Create Instance
-
-- **Template: PyTorch (Vast)** — CUDA + PyTorch pre-installed
-- GPU: 4+ GB VRAM (1B model in bfloat16 is ~2GB)
-
-### 2. Install
+### 1. Create a tunnel (one-time, from your laptop)
 
 ```bash
-ssh root@<vast-ip>
+ocrharbor tunnels create gpu1
+# Outputs: OCRHARBOR_TUNNEL_TOKEN=eyJ...
+```
+
+This creates a permanent URL `gpu1-ocr.gpuharbor.xyz` that survives instance restarts. See the [OCRHarbor README](https://github.com/tsg162/OCRHarbor#tunnel-management) for one-time Cloudflare setup.
+
+### 2. Set up the worker (on the GPU instance)
+
+```bash
 cd /workspace
 git clone https://github.com/tsg162/OCRHarborWorker.git
 cd OCRHarborWorker
-bash install.sh                # default port 5001
-bash install.sh --port 8080    # or pick a port
+
+# Add tunnel token to .env
+echo "OCRHARBOR_TUNNEL_TOKEN=eyJ...paste-token-here..." > .env
+
+# Install
+bash install.sh
+
+# Start the worker (runs in background, logs to worker.log)
+bash restart-server.sh
 ```
 
-### 3. Start
+The install script will:
+1. Install Python dependencies and the bundled OCR engine
+2. Generate a `WORKER_SECRET` for API auth
+3. Install `cloudflared` and connect the named tunnel (if token is set)
+
+### 3. Register with Control Node (from your laptop)
 
 ```bash
-python3 -m ocrharbor_worker.main
+ocrharbor servers add gpu1 https://gpu1-ocr.gpuharbor.xyz --key SECRET_FROM_INSTALL
 ```
 
-### 4. Register with Control Node
+### Reusing tunnels
 
-```bash
-# On your local machine:
-ocrharbor workers add gpu1 <tunnel-url> --key <secret-from-install>
-```
+When you destroy a Vast.ai instance and create a new one, just use the same `OCRHARBOR_TUNNEL_TOKEN` in `.env`. The new instance connects to the same tunnel automatically — no need to re-create the tunnel or update your config. `gpu1-ocr.gpuharbor.xyz` just points to the new machine.
 
-### 5. Stop / Uninstall
+## Configuration
 
-```bash
-pkill -f 'ocrharbor_worker.main'
-```
+Set these in a `.env` file before running `install.sh`:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OCRHARBOR_TUNNEL_TOKEN` | _(none)_ | Cloudflare tunnel token (from `ocrharbor tunnels create`) |
+| `WORKER_SECRET` | _(generated)_ | Shared secret for API auth |
+| `PORT` | `5001` | Listen port |
+| `HF_HOME` | `/workspace/.cache/huggingface` | HuggingFace cache dir |
+| `MAX_QUEUE_SIZE` | `500` | Max queued jobs |
 
 ## API
 
@@ -50,17 +68,6 @@ All endpoints (except `/health`) require `Authorization: Bearer <WORKER_SECRET>`
 | DELETE | `/jobs/{id}` | Cancel a queued job |
 | GET | `/jobs` | List all active jobs |
 | GET | `/health` | GPU status, model loaded, queue depth |
-
-## Configuration
-
-Edit `.env` (created by install.sh):
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `WORKER_SECRET` | Yes | Shared secret for API auth |
-| `PORT` | No | Listen port (default: 5001) |
-| `HF_HOME` | No | HuggingFace cache dir (default: `/workspace/.cache/huggingface`) |
-| `MAX_QUEUE_SIZE` | No | Max queued jobs (default: 500) |
 
 ## What's Included
 
@@ -75,5 +82,10 @@ ocrharbor_worker/        # FastAPI worker application
   ocr_bridge.py          # OCREngine singleton
   webhook.py             # Callback sender (optional)
 install.sh               # One-command setup script
+restart-server.sh        # Start/restart worker in background
 requirements.txt         # Python dependencies
 ```
+
+## Shared Cloudflare credentials
+
+Both `gpuharbor` and `ocrharbor` share credentials stored at `~/.gpuharbor/cloudflare.yaml`. Run `gpuharbor tunnels init` once to set up for both.
