@@ -203,6 +203,7 @@ async def get_config(_: None = Depends(verify_secret)):
 
 @app.get("/health")
 async def health():
+    import os
     import torch
     manager = get_job_manager()
     public_ip = _cached_public_ip
@@ -216,6 +217,7 @@ async def health():
         "queue_depth": manager.queue_depth(),
         "config": _current_config(manager),
         "uptime_seconds": round(time.time() - _START_TIME, 1),
+        "vast_id": os.environ.get("VAST_CONTAINERLABEL"),
     }
 
 
