@@ -731,8 +731,8 @@ Examples:
     # Mode selection
     parser.add_argument("--live", action="store_true",
                         help="Live mode: observe real OCRHarbor traffic instead of injecting synthetic images")
-    parser.add_argument("--window", type=int, default=300,
-                        help="Seconds to observe each batch_size in live mode (default: 300 = 5 min)")
+    parser.add_argument("--window", type=int, default=1200,
+                        help="Seconds to observe each batch_size in live mode (default: 1200 = 20 min)")
 
     # Standalone mode options
     parser.add_argument("--pages", type=int, default=50,
