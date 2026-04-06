@@ -6,13 +6,22 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
+from typing import Optional
+
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel, Field
 
 from ocrharbor_worker.auth import verify_secret
 from ocrharbor_worker.config import settings
 from ocrharbor_worker.job_manager import Job, get_job_manager
 from ocrharbor_worker.models import JobDetail, JobResponse, OCRResultPayload
 from ocrharbor_worker.ocr_bridge import get_ocr_engine, is_engine_loaded
+
+
+class ConfigUpdate(BaseModel):
+    batch_size: Optional[int] = Field(None, ge=1, le=64)
+    batch_wait_seconds: Optional[float] = Field(None, ge=0.0, le=30.0)
+    max_queue_size: Optional[int] = Field(None, ge=1, le=10000)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -97,7 +106,7 @@ async def submit_job(
     _: None = Depends(verify_secret),
 ) -> JobResponse:
     manager = get_job_manager()
-    if manager.queue_depth() >= settings.MAX_QUEUE_SIZE:
+    if manager.queue_depth() >= manager.max_queue_size:
         raise HTTPException(
             429,
             "Queue full",
@@ -133,6 +142,13 @@ async def get_job(job_id: str, _: None = Depends(verify_secret)) -> JobDetail:
     return _job_detail(job)
 
 
+@app.delete("/jobs", status_code=200)
+async def clear_queue(_: None = Depends(verify_secret)):
+    manager = get_job_manager()
+    cancelled = manager.clear_queue()
+    return {"success": True, "cancelled": cancelled, "queue_depth": manager.queue_depth()}
+
+
 @app.delete("/jobs/{job_id}")
 async def cancel_job(job_id: str, _: None = Depends(verify_secret)):
     manager = get_job_manager()
@@ -151,9 +167,44 @@ async def list_jobs(_: None = Depends(verify_secret)):
     }
 
 
+@app.put("/config")
+async def update_config(body: ConfigUpdate, _: None = Depends(verify_secret)):
+    manager = get_job_manager()
+    applied: dict[str, object] = {}
+    if body.batch_size is not None:
+        manager.batch_size = body.batch_size
+        applied["batch_size"] = body.batch_size
+    if body.batch_wait_seconds is not None:
+        manager.batch_wait_seconds = body.batch_wait_seconds
+        applied["batch_wait_seconds"] = body.batch_wait_seconds
+    if body.max_queue_size is not None:
+        manager.max_queue_size = body.max_queue_size
+        applied["max_queue_size"] = body.max_queue_size
+    if not applied:
+        raise HTTPException(400, "No config fields provided")
+    logger.info("Config updated: %s", applied)
+    return {"updated": applied, "config": _current_config(manager)}
+
+
+def _current_config(manager=None):
+    if manager is None:
+        manager = get_job_manager()
+    return {
+        "batch_size": manager.batch_size,
+        "batch_wait_seconds": manager.batch_wait_seconds,
+        "max_queue_size": manager.max_queue_size,
+    }
+
+
+@app.get("/config")
+async def get_config(_: None = Depends(verify_secret)):
+    return _current_config()
+
+
 @app.get("/health")
 async def health():
     import torch
+    manager = get_job_manager()
     public_ip = _cached_public_ip
     return {
         "status": "ok",
@@ -162,7 +213,8 @@ async def health():
         "gpu_available": torch.cuda.is_available(),
         "gpu_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
         "model_loaded": is_engine_loaded(),
-        "queue_depth": get_job_manager().queue_depth(),
+        "queue_depth": manager.queue_depth(),
+        "config": _current_config(manager),
         "uptime_seconds": round(time.time() - _START_TIME, 1),
     }
 

@@ -49,9 +49,13 @@ class Job:
 
 class JobManager:
     def __init__(self) -> None:
-        self._queue: asyncio.Queue[str] = asyncio.Queue(maxsize=settings.MAX_QUEUE_SIZE)
+        self._queue: asyncio.Queue[str] = asyncio.Queue()
         self._jobs: dict[str, Job] = {}
         self._shutdown = asyncio.Event()
+        # Mutable runtime settings (adjustable via PUT /config)
+        self.batch_size: int = settings.BATCH_SIZE
+        self.batch_wait_seconds: float = settings.BATCH_WAIT_SECONDS
+        self.max_queue_size: int = settings.MAX_QUEUE_SIZE
 
     def submit(
         self,
@@ -90,6 +94,20 @@ class JobManager:
         job.image_data = None
         return True
 
+    def clear_queue(self) -> int:
+        cancelled = 0
+        while not self._queue.empty():
+            try:
+                job_id = self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            job = self._jobs.get(job_id)
+            if job and job.status == "queued":
+                job.status = "cancelled"
+                job.image_data = None
+                cancelled += 1
+        return cancelled
+
     def queue_depth(self) -> int:
         return self._queue.qsize()
 
@@ -110,10 +128,10 @@ class JobManager:
         if job is not None and job.status != "cancelled":
             batch.append(job)
 
-        # Try to grab more jobs up to BATCH_SIZE, with a short wait
-        if settings.BATCH_SIZE > 1:
-            deadline = time.time() + settings.BATCH_WAIT_SECONDS
-            while len(batch) < settings.BATCH_SIZE:
+        # Try to grab more jobs up to batch_size, with a short wait
+        if self.batch_size > 1:
+            deadline = time.time() + self.batch_wait_seconds
+            while len(batch) < self.batch_size:
                 remaining = deadline - time.time()
                 if remaining <= 0:
                     break
@@ -128,7 +146,7 @@ class JobManager:
         return batch
 
     async def start_runner(self) -> None:
-        logger.info("Job runner started (batch_size=%d)", settings.BATCH_SIZE)
+        logger.info("Job runner started (batch_size=%d)", self.batch_size)
         while not self._shutdown.is_set():
             batch = await self._drain_batch()
             if not batch:
