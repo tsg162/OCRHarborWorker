@@ -584,7 +584,7 @@ async def async_main(args):
     url = args.url.rstrip("/")
     headers = {}
     if args.secret:
-        headers["X-Worker-Secret"] = args.secret
+        headers["Authorization"] = f"Bearer {args.secret}"
 
     # Compare mode
     if args.compare:

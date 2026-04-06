@@ -128,6 +128,43 @@ engine.load()
 print('  Model loaded successfully')
 "
 
+# --- 6. Start tunnel if token is set ---
+TUNNEL_TOKEN=$(grep '^OCRHARBOR_TUNNEL_TOKEN=' .env 2>/dev/null | cut -d= -f2 || true)
+if [ -z "$TUNNEL_TOKEN" ]; then
+    TUNNEL_TOKEN="${OCRHARBOR_TUNNEL_TOKEN:-}"
+fi
+
+if [ -n "$TUNNEL_TOKEN" ]; then
+    echo "[6/6] Starting Cloudflare tunnel..."
+
+    # Install cloudflared if missing
+    if ! command -v cloudflared &>/dev/null; then
+        echo "  Installing cloudflared..."
+        curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+            -o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared
+    fi
+
+    # Kill any existing tunnel
+    pkill -f "cloudflared.*tunnel.*run" 2>/dev/null || true
+    sleep 0.5
+
+    nohup cloudflared tunnel run --token "$TUNNEL_TOKEN" > "$SCRIPT_DIR/tunnel.log" 2>&1 &
+    TUNNEL_PID=$!
+    echo "$TUNNEL_PID" > "$SCRIPT_DIR/tunnel.pid"
+
+    # Wait briefly for tunnel to connect
+    sleep 3
+    if kill -0 "$TUNNEL_PID" 2>/dev/null; then
+        echo "  Tunnel started (PID: $TUNNEL_PID)"
+    else
+        echo "  WARNING: Tunnel process died. Check tunnel.log"
+    fi
+else
+    echo ""
+    echo "  [SKIP] No OCRHARBOR_TUNNEL_TOKEN found — tunnel not started."
+    echo "  To enable: add OCRHARBOR_TUNNEL_TOKEN=<token> to .env and re-run install.sh"
+fi
+
 echo ""
 echo "========================================"
 echo "  Installation complete!"
@@ -135,20 +172,19 @@ echo "========================================"
 echo ""
 echo "  WORKER_SECRET: $SECRET"
 echo "  PORT:          $PORT"
+if [ -n "$TUNNEL_TOKEN" ]; then
+echo "  TUNNEL:        running (PID: ${TUNNEL_PID:-?})"
+fi
 echo ""
 echo "Start the worker:"
 echo "  cd $SCRIPT_DIR"
-echo "  $PYTHON -m ocrharbor_worker.main"
-echo ""
-echo "Or in background:"
-echo "  nohup $PYTHON -m ocrharbor_worker.main > worker.log 2>&1 &"
+echo "  ./restart-server.sh"
 echo ""
 echo "Then on your control node, add this worker:"
-echo "  ocrharbor workers add <name> <tunnel-url> --key $SECRET"
+echo "  ocrharbor servers add <name> <tunnel-url> --key $SECRET"
 echo ""
-echo "To stop the worker:"
-echo "  pkill -f 'ocrharbor_worker.main'"
-echo ""
-echo "To uninstall (remove everything):"
-echo "  rm -rf $SCRIPT_DIR .env worker.log"
-echo "  rm -rf $CACHE_DIR/huggingface  # model weights (~4GB)"
+echo "Logs:"
+echo "  Worker: tail -f $SCRIPT_DIR/worker.log"
+if [ -n "$TUNNEL_TOKEN" ]; then
+echo "  Tunnel: tail -f $SCRIPT_DIR/tunnel.log"
+fi

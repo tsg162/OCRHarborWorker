@@ -2,13 +2,25 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-PORT=$(grep '^PORT=' .env 2>/dev/null | cut -d= -f2 || echo 8080)
+PORT=$(grep '^PORT=' .env 2>/dev/null | cut -d= -f2 || echo 5001)
 
 echo "Killing anything on port $PORT..."
 fuser -k "$PORT/tcp" 2>/dev/null || true
 sleep 0.5
 
-LOG="$( cd "$(dirname "$0")" && pwd )/worker.log"
+# --- Restart tunnel if token is configured ---
+TUNNEL_TOKEN=$(grep '^OCRHARBOR_TUNNEL_TOKEN=' .env 2>/dev/null | cut -d= -f2 || true)
+if [ -n "$TUNNEL_TOKEN" ]; then
+    echo "Restarting Cloudflare tunnel..."
+    pkill -f "cloudflared.*tunnel.*run" 2>/dev/null || true
+    sleep 0.5
+    nohup cloudflared tunnel run --token "$TUNNEL_TOKEN" > tunnel.log 2>&1 &
+    TUNNEL_PID=$!
+    echo "$TUNNEL_PID" > tunnel.pid
+    echo "Tunnel PID: $TUNNEL_PID"
+fi
+
+LOG="$(pwd)/worker.log"
 
 echo "Starting worker on port $PORT (logging to $LOG)..."
 nohup python3 -m ocrharbor_worker.main > "$LOG" 2>&1 &
@@ -29,6 +41,9 @@ for i in $(seq 1 120); do
         echo ""
         echo "Logs:   tail -f $LOG"
         echo "Stop:   kill $WORKER_PID"
+        if [ -n "$TUNNEL_TOKEN" ]; then
+            echo "Tunnel: tail -f $(pwd)/tunnel.log"
+        fi
         exit 0
     fi
     sleep 1
