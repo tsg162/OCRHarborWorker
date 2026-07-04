@@ -143,10 +143,17 @@ async def get_job(job_id: str, _: None = Depends(verify_secret)) -> JobDetail:
 
 
 @app.delete("/jobs", status_code=200)
-async def clear_queue(_: None = Depends(verify_secret)):
+async def clear_queue(
+    include_processing: bool = False,
+    _: None = Depends(verify_secret),
+):
     manager = get_job_manager()
-    cancelled = manager.clear_queue()
-    return {"success": True, "cancelled": cancelled, "queue_depth": manager.queue_depth()}
+    result = manager.clear_all(include_processing=include_processing)
+    return {
+        "success": True,
+        "cancelled": result["cancelled_queued"] + result["cancelled_processing"],
+        **result,
+    }
 
 
 @app.delete("/jobs/{job_id}")

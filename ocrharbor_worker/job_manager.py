@@ -88,14 +88,15 @@ class JobManager:
         job = self._jobs.get(job_id)
         if job is None:
             return False
-        if job.status in ("completed", "failed"):
+        if job.status in ("completed", "failed", "cancelled"):
             return False
         job.status = "cancelled"
-        job.image_data = None
+        if job.started_at is None:
+            job.image_data = None
         return True
 
-    def clear_queue(self) -> int:
-        cancelled = 0
+    def clear_queue(self) -> dict:
+        cancelled_queued = 0
         while not self._queue.empty():
             try:
                 job_id = self._queue.get_nowait()
@@ -105,8 +106,27 @@ class JobManager:
             if job and job.status == "queued":
                 job.status = "cancelled"
                 job.image_data = None
-                cancelled += 1
-        return cancelled
+                cancelled_queued += 1
+
+        processing = sum(1 for job in self._jobs.values() if job.status == "processing")
+        return {
+            "cancelled_queued": cancelled_queued,
+            "cancelled_processing": 0,
+            "processing": processing,
+            "queue_depth": self.queue_depth(),
+        }
+
+    def clear_all(self, include_processing: bool = False) -> dict:
+        result = self.clear_queue()
+        cancelled_processing = 0
+        if include_processing:
+            for job in self._jobs.values():
+                if job.status == "processing":
+                    job.status = "cancelled"
+                    cancelled_processing += 1
+        result["cancelled_processing"] = cancelled_processing
+        result["processing"] = sum(1 for job in self._jobs.values() if job.status == "processing")
+        return result
 
     def queue_depth(self) -> int:
         return self._queue.qsize()
@@ -167,6 +187,11 @@ class JobManager:
                 try:
                     results = await asyncio.to_thread(self._run_ocr_batch, image_jobs)
                     for job, result in zip(image_jobs, results):
+                        if job.status == "cancelled":
+                            job.completed_at = time.time()
+                            job.image_data = None
+                            logger.info("Job %s cancelled during processing", job.id)
+                            continue
                         job.status = "completed"
                         job.result_text = result.text
                         job.result_model = result.model
@@ -176,8 +201,9 @@ class JobManager:
                         logger.info("Job %s completed in %.1fs (batch)", job.id, result.elapsed_seconds)
                 except Exception as exc:
                     for job in image_jobs:
-                        job.status = "failed"
-                        job.error = str(exc)
+                        if job.status != "cancelled":
+                            job.status = "failed"
+                            job.error = str(exc)
                         job.completed_at = time.time()
                         job.image_data = None
                     logger.error("Batch failed: %s", exc)
@@ -187,14 +213,18 @@ class JobManager:
                 logger.info("Processing PDF job %s (%s)", job.id, job.filename)
                 try:
                     result = await asyncio.to_thread(self._run_ocr_single, job)
-                    job.status = "completed"
-                    job.result_text = result.text
-                    job.result_model = result.model
-                    job.result_elapsed = result.elapsed_seconds
-                    logger.info("Job %s completed in %.1fs", job.id, result.elapsed_seconds)
+                    if job.status == "cancelled":
+                        logger.info("Job %s cancelled during processing", job.id)
+                    else:
+                        job.status = "completed"
+                        job.result_text = result.text
+                        job.result_model = result.model
+                        job.result_elapsed = result.elapsed_seconds
+                        logger.info("Job %s completed in %.1fs", job.id, result.elapsed_seconds)
                 except Exception as exc:
-                    job.status = "failed"
-                    job.error = str(exc)
+                    if job.status != "cancelled":
+                        job.status = "failed"
+                        job.error = str(exc)
                     logger.error("Job %s failed: %s", job.id, exc)
                 finally:
                     job.completed_at = time.time()

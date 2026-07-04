@@ -23,6 +23,10 @@ This prints a single command to paste on the GPU instance. It clones or updates
 this repo, writes `.env`, installs dependencies, starts the Cloudflare tunnel,
 starts the worker, and pre-registers it with the control node.
 
+`target-depth` is the number of OCR jobs the control node tries to keep queued
+on this worker. `50` is a good default for a dedicated OCR instance. Use a
+lower value, such as `10` or `20`, when testing or sharing the GPU.
+
 ### 3. Manual worker setup
 
 ```bash
@@ -54,6 +58,9 @@ ocrharbor servers add gpu1 https://gpu1-ocr.gpuharbor.xyz --key SECRET_FROM_INST
 
 When you destroy a Vast.ai instance and create a new one, just use the same `OCRHARBOR_TUNNEL_TOKEN` in `.env`. The new instance connects to the same tunnel automatically — no need to re-create the tunnel or update your config. `gpu1-ocr.gpuharbor.xyz` just points to the new machine.
 
+If `ocrharbor tunnels list` shows an existing tunnel with `IN USE` set to
+`no`, it is available for a new worker. The tunnel token is still valid.
+
 ## Configuration
 
 Set these in a `.env` file before running `install.sh`:
@@ -75,8 +82,14 @@ All endpoints (except `/health`) require `Authorization: Bearer <WORKER_SECRET>`
 | POST | `/jobs` | Submit OCR job (multipart: file + form fields). Returns 202. |
 | GET | `/jobs/{id}` | Get job status and result |
 | DELETE | `/jobs/{id}` | Cancel a queued job |
+| DELETE | `/jobs` | Clear queued jobs (`?include_processing=true` also marks processing jobs canceled after OCR returns) |
 | GET | `/jobs` | List all active jobs |
 | GET | `/health` | GPU status, model loaded, queue depth |
+
+`DELETE /jobs` can remove queued work immediately. Jobs already inside a GPU
+OCR call cannot be interrupted mid-call, but with `include_processing=true` the
+worker marks them canceled and will not report them as completed when the OCR
+call returns.
 
 ## What's Included
 
