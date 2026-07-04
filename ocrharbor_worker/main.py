@@ -217,7 +217,7 @@ async def health():
         "queue_depth": manager.queue_depth(),
         "config": _current_config(manager),
         "uptime_seconds": round(time.time() - _START_TIME, 1),
-        "vast_id": os.environ.get("VAST_CONTAINERLABEL"),
+        "vast_id": os.environ.get("CONTAINER_ID") or os.environ.get("VAST_CONTAINERLABEL"),
     }
 
 

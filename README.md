@@ -13,7 +13,17 @@ ocrharbor tunnels create gpu1
 
 This creates a permanent URL `gpu1-ocr.gpuharbor.xyz` that survives instance restarts. See the [OCRHarbor README](https://github.com/tsg162/OCRHarbor#tunnel-management) for one-time Cloudflare setup.
 
-### 2. Set up the worker (on the GPU instance)
+### 2. Deploy from your laptop
+
+```bash
+ocrharbor deploy gpu1 --target-depth 50
+```
+
+This prints a single command to paste on the GPU instance. It clones or updates
+this repo, writes `.env`, installs dependencies, starts the Cloudflare tunnel,
+starts the worker, and pre-registers it with the control node.
+
+### 3. Manual worker setup
 
 ```bash
 cd /workspace
@@ -23,19 +33,18 @@ cd OCRHarborWorker
 # Add tunnel token to .env
 echo "OCRHARBOR_TUNNEL_TOKEN=eyJ...paste-token-here..." > .env
 
-# Install
 bash install.sh
-
-# Start the worker (runs in background, logs to worker.log)
 bash restart-server.sh
 ```
 
 The install script will:
 1. Install Python dependencies and the bundled OCR engine
 2. Generate a `WORKER_SECRET` for API auth
-3. Install `cloudflared` and connect the named tunnel (if token is set)
+3. Install `cloudflared` if a tunnel token is set
 
-### 3. Register with Control Node (from your laptop)
+`restart-server.sh` starts the worker and Cloudflare tunnel in the background.
+
+### 4. Register with Control Node (manual mode only)
 
 ```bash
 ocrharbor servers add gpu1 https://gpu1-ocr.gpuharbor.xyz --key SECRET_FROM_INSTALL

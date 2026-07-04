@@ -402,12 +402,16 @@ async def run_live_observation(
         print(f"  settling ({settle_time:.0f}s)...", end="", flush=True)
         await asyncio.sleep(settle_time)
 
-        # Snapshot: record which jobs are already completed so we only count new ones
-        seen_completed: set[str] = set()
+        # Snapshot: record every job already in a terminal state so we only
+        # count NEW completions/failures during the window. Must include both
+        # completed AND failed — otherwise pre-existing failures from before
+        # the window started get scooped up on the first poll and inflate the
+        # fail count by hundreds.
+        seen_terminal: set[str] = set()
         initial_jobs = await get_jobs_snapshot(client, url, headers)
         for j in initial_jobs:
-            if j.get("status") == "completed":
-                seen_completed.add(j["job_id"])
+            if j.get("status") in ("completed", "failed"):
+                seen_terminal.add(j["job_id"])
 
         completed_elapsed: list[float] = []  # server-side elapsed for each new completion
         failed_count = 0
@@ -423,16 +427,16 @@ async def run_live_observation(
             for j in jobs:
                 jid = j.get("job_id", "")
                 status = j.get("status", "")
-                if jid in seen_completed:
+                if jid in seen_terminal:
                     continue
                 if status == "completed":
-                    seen_completed.add(jid)
+                    seen_terminal.add(jid)
                     new_done += 1
                     result = j.get("result")
                     if result and result.get("elapsed_seconds"):
                         completed_elapsed.append(result["elapsed_seconds"])
                 elif status == "failed":
-                    seen_completed.add(jid)
+                    seen_terminal.add(jid)
                     failed_count += 1
 
             remaining = deadline - time.time()
